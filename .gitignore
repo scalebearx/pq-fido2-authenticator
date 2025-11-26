@@ -1,0 +1,17 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# dev
+.pytest_cache/
+.env
+authenticator/data/credential_index.json
+codex/
+rp_server/data/rp.db
