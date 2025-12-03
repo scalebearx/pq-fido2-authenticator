@@ -37,6 +37,7 @@ uv run python -m authenticator --url http://localhost:3000 # Note: 在 project �
 
 ```bash
 cd drizzle
+bun install      # 安裝依賴
 bun run db:studio
 ```
 
