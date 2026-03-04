@@ -13,5 +13,11 @@ wheels/
 .pytest_cache/
 .env
 authenticator/data/credential_index.json
-codex/
 rp_server/data/rp.db
+.DS_Store
+
+# Extension build/dependency artifacts
+extension/node_modules/
+extension/dist/
+extension/.deps/
+extension/.native-host/
