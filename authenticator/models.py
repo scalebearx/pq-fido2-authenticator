@@ -8,7 +8,7 @@ import secrets
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 def b64url_encode(data: bytes) -> str:
@@ -55,6 +55,7 @@ class PublicKeyCredentialCreationOptions(BaseModel):
     excludeCredentials: List[PublicKeyCredentialDescriptor] = Field(
         default_factory=list
     )
+    extensions: Dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def ensure_supported_algorithm(self) -> "PublicKeyCredentialCreationOptions":
@@ -66,11 +67,19 @@ class PublicKeyCredentialCreationOptions(BaseModel):
 class PublicKeyCredentialDescriptor(BaseModel):
     id: str
     type: Literal["public-key"] = "public-key"
+    transports: List[str] = Field(default_factory=list)
+
+    @field_validator("transports", mode="before")
+    @classmethod
+    def normalize_transports(cls, value: Any) -> List[str]:
+        if value is None:
+            return []
+        return value
 
 
 class PublicKeyCredentialRequestOptions(BaseModel):
     challenge: str
-    rpId: str
+    rpId: Optional[str] = None
     timeout: int = 90_000
     userVerification: Literal["required", "preferred", "discouraged"] = "preferred"
     allowCredentials: List[PublicKeyCredentialDescriptor] = Field(default_factory=list)
@@ -86,6 +95,7 @@ class AuthenticatorAttestationResponse(AuthenticatorResponse):
     publicKeyAlgorithm: int
     publicKey: str
     credentialId: str
+    transports: List[str] = Field(default_factory=list)
 
 
 class AuthenticatorAssertionResponse(AuthenticatorResponse):

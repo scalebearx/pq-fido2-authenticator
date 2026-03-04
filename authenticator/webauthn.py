@@ -19,10 +19,9 @@ def build_credential_public_key(record: CredentialRecord, algorithm: int) -> byt
     """Encode the PQ public key as a COSE_Key structure."""
     public_key_bytes = b64url_decode(record.public_key)
     cose_key = {
-        1: 1,  # Treat as OKP for compatibility
+        1: 7,  # AKP key type, matching the working Chrome extension payload
         3: algorithm,
         -1: public_key_bytes,
-        -70001: "ml-dsa",
     }
     return cbor.encode(cose_key)
 

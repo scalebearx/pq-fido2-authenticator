@@ -118,8 +118,10 @@ def create_app(settings: RPSettings | None = None) -> Flask:
                 "residentKey": "discouraged",
                 "userVerification": "preferred",
             },
+            extensions={"credProps": True},
             excludeCredentials=[
-                {"id": cred.id, "type": "public-key"} for cred in credentials
+                {"id": cred.id, "type": "public-key", "transports": ["internal"]}
+                for cred in credentials
             ],
         )
         _log(
@@ -174,7 +176,10 @@ def create_app(settings: RPSettings | None = None) -> Flask:
         response = AuthenticateOptionsResponse(
             challenge=challenge,
             rpId=settings.rp_id,
-            allowCredentials=[{"id": cred.id, "type": "public-key"} for cred in credentials],
+            allowCredentials=[
+                {"id": cred.id, "type": "public-key", "transports": ["internal"]}
+                for cred in credentials
+            ],
             timeout=90_000,
         )
         _log(
@@ -211,7 +216,13 @@ def create_app(settings: RPSettings | None = None) -> Flask:
                     ),
                     400,
                 )
-            credential = verify_authentication_payload(session, payload.credential, challenge, user)
+            credential = verify_authentication_payload(
+                session,
+                payload.credential,
+                challenge,
+                settings,
+                user,
+            )
             session.add(credential)
             _log(
                 "authn",

@@ -26,7 +26,7 @@ def test_build_credential_public_key_encodes_cose():
     record = make_record()
     encoded = build_credential_public_key(record, -49)
     decoded = cbor2.loads(encoded)
-    assert decoded[1] == 1  # kty
+    assert decoded[1] == 7  # kty=AKP
     assert decoded[3] == -49  # alg
     assert decoded[-1] == b"public"
 

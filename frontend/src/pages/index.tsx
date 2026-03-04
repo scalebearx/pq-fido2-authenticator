@@ -14,9 +14,9 @@ import { toast } from "sonner";
 import { rpFetch } from "@/lib/api";
 import {
   base64urlToBuffer,
+  binaryStringToBuffer,
   serializeAssertion,
   serializeAttestation,
-  stringToBuffer,
 } from "@/lib/webauthn";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -86,13 +86,14 @@ type RegisterOptionsPayload = {
   timeout: number;
   attestation: AttestationConveyancePreference;
   authenticatorSelection: AuthenticatorSelectionCriteria;
-  excludeCredentials?: { id: string; type: "public-key" }[];
+  excludeCredentials?: { id: string; type: "public-key"; transports?: AuthenticatorTransport[] }[];
+  extensions?: AuthenticationExtensionsClientInputs;
 };
 
 type AuthenticateOptionsPayload = {
   challenge: string;
   rpId: string;
-  allowCredentials: { id: string; type: "public-key" }[];
+  allowCredentials: { id: string; type: "public-key"; transports?: AuthenticatorTransport[] }[];
   timeout: number;
   userVerification: "required" | "preferred" | "discouraged";
 };
@@ -199,13 +200,14 @@ export default function HomePage() {
           rp: options.rp,
           user: {
             ...options.user,
-            id: stringToBuffer(options.user.id),
+            id: binaryStringToBuffer(options.user.id),
           },
           challenge: base64urlToBuffer(options.challenge),
           pubKeyCredParams: orderedParams,
           timeout: options.timeout,
           attestation: options.attestation,
           authenticatorSelection: options.authenticatorSelection,
+          extensions: options.extensions,
           excludeCredentials: options.excludeCredentials?.map((cred) => ({
             ...cred,
             id: base64urlToBuffer(cred.id),

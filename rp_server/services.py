@@ -77,6 +77,8 @@ def verify_registration_payload(
     response = payload.get("response", {})
     client_data_json = _b64url_to_bytes(response.get("clientDataJSON"))
     client_data = json.loads(client_data_json)
+    if client_data.get("type") != "webauthn.create":
+        abort(400, "Invalid clientData type")
     if client_data.get("challenge") != challenge:
         abort(400, "Challenge mismatch")
     if client_data.get("origin") != settings.origin:
@@ -90,6 +92,8 @@ def verify_registration_payload(
     if not isinstance(auth_data_bytes, (bytes, bytearray)):
         abort(400, "Invalid authenticator data")
     parsed = _parse_authenticator_data(bytes(auth_data_bytes))
+    if parsed.get("rp_id_hash") != _rp_id_hash(settings.rp_id):
+        abort(400, "rpId hash mismatch")
     credential_id = parsed.get("credential_id")
     credential_public_key = parsed.get("credential_public_key")
     if credential_id is None or credential_public_key is None:
@@ -112,20 +116,27 @@ def verify_authentication_payload(
     session: Session,
     payload: dict,
     challenge: str,
+    settings: RPSettings,
     user: User,
 ) -> Credential:
     response = payload.get("response", {})
-    credential_id = payload.get("id")
+    credential_id = payload.get("id") or payload.get("rawId")
     credential = session.get(Credential, credential_id or "")
     if not credential or credential.user_id != user.id:
         abort(400, "Unknown credential")
 
     client_data = json.loads(_b64url_to_bytes(response.get("clientDataJSON")))
+    if client_data.get("type") != "webauthn.get":
+        abort(400, "Invalid clientData type")
     if client_data.get("challenge") != challenge:
         abort(400, "Challenge mismatch")
+    if client_data.get("origin") != settings.origin:
+        abort(400, "Origin mismatch")
 
     auth_data_bytes = _b64url_to_bytes(response.get("authenticatorData"))
     parsed = _parse_authenticator_data(auth_data_bytes)
+    if parsed.get("rp_id_hash") != _rp_id_hash(settings.rp_id):
+        abort(400, "rpId hash mismatch")
 
     message = auth_data_bytes + hashlib.sha256(
         json.dumps(client_data, separators=(",", ":")).encode("utf-8")
@@ -164,6 +175,10 @@ def _b64url_to_bytes(value: str | None) -> bytes:
 
 def _bytes_to_b64url(value: bytes) -> str:
     return base64.urlsafe_b64encode(value).decode("ascii").rstrip("=")
+
+
+def _rp_id_hash(rp_id: str) -> bytes:
+    return hashlib.sha256(rp_id.encode("idna")).digest()
 
 
 def _parse_authenticator_data(data: bytes) -> dict:

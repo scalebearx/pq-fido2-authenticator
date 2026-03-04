@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from base64 import urlsafe_b64decode as b64decode
+import json
 from types import SimpleNamespace
 
 import cbor2
@@ -70,6 +71,11 @@ def test_make_credential_produces_valid_attestation(authenticator):
     parsed = _parse_authenticator_data(attestation["authData"])
     assert parsed["credential_id"] is not None
     assert parsed["credential_public_key"][3] == -49
+    assert response["transports"] == ["internal"]
+    assert result["authenticatorAttachment"] == "platform"
+    assert result["clientExtensionResults"] == {}
+    client_data = json.loads(_b64_to_bytes(response["clientDataJSON"]))
+    assert client_data["crossOrigin"] is False
 
     # Exclude list should now block a duplicate registration
     duplicate_options = make_creation_options()
@@ -90,9 +96,39 @@ def test_get_assertion_updates_sign_count(authenticator):
     assert parsed["sign_count"] == 1
     signature = _b64_to_bytes(response["signature"])
     assert signature.endswith(b"::sig")
+    client_data = json.loads(_b64_to_bytes(response["clientDataJSON"]))
+    assert client_data["crossOrigin"] is False
+    assert assertion["authenticatorAttachment"] == "platform"
+    assert assertion["clientExtensionResults"] == {}
+
+
+def test_make_credential_rejects_rp_id_origin_mismatch(authenticator):
+    with pytest.raises(ValueError, match="rpId mismatch"):
+        authenticator.make_credential(make_creation_options(), origin="https://wrong.example.com")
+
+
+def test_get_assertion_defaults_rp_id_from_origin(authenticator):
+    creation = authenticator.make_credential(make_creation_options(), origin="https://example.com")
+    request_options = make_request_options(creation["id"])
+    request_options.pop("rpId")
+
+    assertion = authenticator.get_assertion(request_options, origin="https://example.com")
+
+    auth_data = _b64_to_bytes(assertion["response"]["authenticatorData"])
+    parsed = _parse_authenticator_data(auth_data)
+    assert parsed["sign_count"] == 1
+
+
+def test_get_assertion_accepts_null_transports(authenticator):
+    creation = authenticator.make_credential(make_creation_options(), origin="https://example.com")
+    request_options = make_request_options(creation["id"])
+    request_options["allowCredentials"][0]["transports"] = None
+
+    assertion = authenticator.get_assertion(request_options, origin="https://example.com")
+
+    assert assertion["id"] == creation["id"]
 
 
 def _b64_to_bytes(data: str) -> bytes:
     padding = "=" * (-len(data) % 4)
     return b64decode(data + padding)
-

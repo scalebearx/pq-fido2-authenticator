@@ -40,6 +40,7 @@ class RegisterOptionsResponse(BaseModel):
     timeout: int
     attestation: Literal["none"] = "none"
     authenticatorSelection: dict
+    extensions: dict = Field(default_factory=dict)
     excludeCredentials: List[dict] = Field(default_factory=list)
 
 

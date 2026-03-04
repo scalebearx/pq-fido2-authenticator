@@ -85,6 +85,7 @@ INJECT_SCRIPT = r"""
       getPublicKey: () =>
         response.publicKey ? base64urlToArrayBuffer(response.publicKey) : null,
       getPublicKeyAlgorithm: () => response.publicKeyAlgorithm ?? null,
+      getTransports: () => response.transports ?? [],
       toJSON: () => response,
     };
     return att;

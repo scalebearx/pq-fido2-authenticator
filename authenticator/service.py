@@ -7,6 +7,7 @@ import json
 import logging
 import secrets
 import sys
+from urllib.parse import urlparse
 from typing import Dict, List, Optional
 
 from .config import AuthenticatorSettings
@@ -94,6 +95,8 @@ class Authenticator:
         options = PublicKeyCredentialCreationOptions.model_validate(options_data)
         req_id = secrets.token_hex(4)
         resolved_origin = origin or self.settings.origin
+        rp_id = options.rp.id
+        self._ensure_rp_id_matches_origin(rp_id, resolved_origin)
         _log(
             "register",
             "start",
@@ -120,22 +123,18 @@ class Authenticator:
         keypair = suite.generate_keypair()
         record = CredentialRecord.new(
             user_handle=options.user.id,
-            rp_id=options.rp.id,
+            rp_id=rp_id,
             algorithm=alg,
             public_key=keypair.public_key,
             private_key=keypair.private_key,
         )
         self.store.save(record)
 
-        client_data = {
-            "type": "webauthn.create",
-            "challenge": options.challenge,
-            "origin": resolved_origin,
-        }
+        client_data = self._build_client_data("webauthn.create", options.challenge, resolved_origin)
         credential_id_bytes = b64url_decode(record.credential_id)
         credential_public_key = build_credential_public_key(record, alg)
         auth_data = build_authenticator_data(
-            rp_id=options.rp.id,
+            rp_id=rp_id,
             sign_count=record.sign_count,
             credential_id=credential_id_bytes,
             credential_public_key=credential_public_key,
@@ -150,12 +149,16 @@ class Authenticator:
             publicKeyAlgorithm=alg,
             publicKey=record.public_key,
             credentialId=record.credential_id,
+            transports=["internal"],
         )
+        include_cred_props = options.extensions.get("credProps") is True
 
         result = {
             "id": record.credential_id,
             "rawId": record.credential_id,
             "type": "public-key",
+            "authenticatorAttachment": "platform",
+            "clientExtensionResults": {"credProps": {"rk": False}} if include_cred_props else {},
             "response": response.model_dump(),
         }
         _log(
@@ -174,38 +177,36 @@ class Authenticator:
         options = PublicKeyCredentialRequestOptions.model_validate(options_data)
         req_id = secrets.token_hex(4)
         resolved_origin = origin or self.settings.origin
+        rp_id = options.rpId or self._origin_host(resolved_origin)
+        self._ensure_rp_id_matches_origin(rp_id, resolved_origin)
         _log(
             "authn",
             "start",
             req_id,
-            rp_id=options.rpId,
+            rp_id=rp_id,
             allowed=len(options.allowCredentials),
             origin=resolved_origin,
         )
         self._verify_user("Touch ID to continue sign-in")
-        record = self._locate_credential(options.allowCredentials, options.rpId)
+        record = self._locate_credential(options.allowCredentials, rp_id)
         if record is None:
             _log(
                 "authn",
                 "no_credential",
                 req_id,
-                rp_id=options.rpId,
+                rp_id=rp_id,
                 level=logging.WARNING,
             )
             raise CredentialStoreError("No credential available for assertion")
         suite = PQCSignatureSuite(record.algorithm)
 
-        client_data = {
-            "type": "webauthn.get",
-            "challenge": options.challenge,
-            "origin": resolved_origin,
-        }
+        client_data = self._build_client_data("webauthn.get", options.challenge, resolved_origin)
         client_data_json = json.dumps(client_data, separators=(",", ":")).encode("utf-8")
         client_data_hash = hashlib.sha256(client_data_json).digest()
 
         new_sign_count = record.sign_count + 1
         auth_data_bytes = build_authenticator_data(
-            rp_id=options.rpId,
+            rp_id=rp_id,
             sign_count=new_sign_count,
             credential_id=None,
             credential_public_key=None,
@@ -226,6 +227,8 @@ class Authenticator:
             "id": record.credential_id,
             "rawId": record.credential_id,
             "type": "public-key",
+            "authenticatorAttachment": "platform",
+            "clientExtensionResults": {},
             "response": response.model_dump(),
         }
         _log(
@@ -263,6 +266,28 @@ class Authenticator:
                 return record
         matches = self.store.find_by_rp(rp_id)
         return matches[0] if matches else None
+
+    @staticmethod
+    def _build_client_data(credential_type: str, challenge: str, origin: str) -> Dict[str, object]:
+        return {
+            "type": credential_type,
+            "challenge": challenge,
+            "origin": origin,
+            "crossOrigin": False,
+        }
+
+    @staticmethod
+    def _origin_host(origin: str) -> str:
+        parsed = urlparse(origin)
+        if not parsed.hostname:
+            raise ValueError("Invalid origin")
+        return parsed.hostname
+
+    @classmethod
+    def _ensure_rp_id_matches_origin(cls, rp_id: str, origin: str) -> None:
+        origin_host = cls._origin_host(origin)
+        if rp_id != origin_host:
+            raise ValueError(f"rpId mismatch: {rp_id} vs {origin_host}")
 
     def _enforce_exclude_list(
         self,
